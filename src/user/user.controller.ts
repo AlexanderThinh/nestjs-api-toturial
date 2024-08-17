@@ -1,13 +1,13 @@
 import { Body, Controller, Get, Put, Req, UseGuards } from '@nestjs/common';
 import { Request } from 'express';
 import { GetUser, Roles } from 'src/auth/decorator';
-import { JwtGuard } from 'src/auth/guard';
+import { JwtGuard, RolesGuard } from 'src/auth/guard';
 import { UserResponse } from 'src/response/reponse.user';
 import { UpdateUserRoleRequest } from './dto/user.dto';
 import { UserService } from './user.service';
 import { UserRole } from 'src/enum/user-role';
 
-@UseGuards(JwtGuard)
+@UseGuards(JwtGuard, RolesGuard)
 @Controller('users')
 export class UserController {
     constructor(private userService: UserService) {}

@@ -6,6 +6,7 @@ import * as argon from 'argon2';
 import { UserEntity } from "src/entity/entity.user";
 import { Repository } from "typeorm";
 import { AuthDto } from "./dto";
+import { UserRole } from "src/enum/user-role";
 
 @Injectable()
 export class AuthService {
@@ -23,9 +24,10 @@ export class AuthService {
             const hash = await argon.hash(authdto.password);
 
             // Save new user in db
-            const user = await this.userRepository.create({
+            const user = this.userRepository.create({
                 email: authdto.email,
-                hash
+                hash,
+                role: UserRole.GUEST
             })
 
             const savedUser = await this.userRepository.save(user);
