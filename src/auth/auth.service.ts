@@ -1,16 +1,20 @@
-import { ForbiddenException, Injectable, InternalServerErrorException } from "@nestjs/common";
+import { ForbiddenException, Injectable } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
+import { JwtService } from "@nestjs/jwt";
 import { InjectRepository } from "@nestjs/typeorm";
+import * as argon from 'argon2';
 import { UserEntity } from "src/entity/entity.user";
-import { QueryFailedError, Repository } from "typeorm";
+import { Repository } from "typeorm";
 import { AuthDto } from "./dto";
-import * as argon from 'argon2'
-import { UserResponse } from "src/response/reponse.user";
 
 @Injectable()
 export class AuthService {
     constructor(
         @InjectRepository(UserEntity)
-        private userRepository: Repository<UserEntity>
+        private userRepository: Repository<UserEntity>,
+
+        private config: ConfigService,
+        private jwt: JwtService
     ) {}
 
     async signup(authdto: AuthDto) {
@@ -26,7 +30,7 @@ export class AuthService {
 
             const savedUser = await this.userRepository.save(user);
             // Return saved user 
-            return UserResponse.bring(savedUser);
+            return this.signToken(savedUser.id, savedUser.email);
         } catch (error) {
             throw new ForbiddenException('Credentials taken');
         }
@@ -45,7 +49,23 @@ export class AuthService {
             throw new ForbiddenException('Credentials incorrect')
         }
 
-        // Return user
-        return UserResponse.bring(user);
+        return this.signToken(user.id, user.email);
+    }
+
+    async signToken(userId: number, email: string): Promise<{ access_token: string }> {
+        const payload = {
+            sub: userId,
+            email
+        }
+
+        const secret = this.config.get('JWT_SECRET');
+        const accessToken = await this.jwt.signAsync(payload, {
+            expiresIn: '2m',
+            secret: secret
+        });
+
+        return {
+            access_token: accessToken
+        }
     }
 }
