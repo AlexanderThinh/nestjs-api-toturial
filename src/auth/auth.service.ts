@@ -1,12 +1,13 @@
-import { ForbiddenException, Injectable } from "@nestjs/common";
+import { ForbiddenException, Injectable, InternalServerErrorException } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { JwtService } from "@nestjs/jwt";
-import { InjectRepository } from "@nestjs/typeorm";
+import { InjectDataSource, InjectRepository } from "@nestjs/typeorm";
 import * as argon from 'argon2';
+import { BookmarkEntity } from "src/entity/entity.bookmark";
 import { UserEntity } from "src/entity/entity.user";
-import { Repository } from "typeorm";
-import { AuthDto } from "./dto";
 import { UserRole } from "src/enum/user-role";
+import { DataSource, Repository } from "typeorm";
+import { AuthDto } from "./dto";
 
 @Injectable()
 export class AuthService {
@@ -14,28 +15,52 @@ export class AuthService {
         @InjectRepository(UserEntity)
         private userRepository: Repository<UserEntity>,
 
+        @InjectRepository(BookmarkEntity)
+        private bookmarkRepository: Repository<BookmarkEntity>,
+
         private config: ConfigService,
-        private jwt: JwtService
+        private jwt: JwtService,
+
+        @InjectDataSource() 
+        private readonly dataSource: DataSource
     ) {}
 
     async signup(authdto: AuthDto) {
-        try {
-            // Generate password hash
-            const hash = await argon.hash(authdto.password);
+        const queryRunner = this.dataSource.createQueryRunner();
 
-            // Save new user in db
-            const user = this.userRepository.create({
-                email: authdto.email,
-                hash,
-                role: UserRole.GUEST
+        await queryRunner.connect();
+        await queryRunner.startTransaction();
+
+        // Generate password hash
+        const hash = await argon.hash(authdto.password);
+
+        const user = this.userRepository.create({
+            email: authdto.email,
+            hash,
+            role: UserRole.GUEST
+        })
+
+        try{
+            const savedUser = await queryRunner.manager.save(UserEntity, user);
+
+            // Create new bookmark for test
+            const bookmark = this.bookmarkRepository.create({
+                title: "Title",
+                description: "Description",
+                link: "Link",
+                user: savedUser
             })
+            
+            await queryRunner.manager.save(BookmarkEntity, bookmark);
+            await queryRunner.commitTransaction();
 
-            const savedUser = await this.userRepository.save(user);
-            // Return saved user 
             return this.signToken(savedUser.id, savedUser.email);
-        } catch (error) {
-            throw new ForbiddenException('Credentials taken');
-        }
+        } catch (err) {
+            await queryRunner.rollbackTransaction();
+            throw new InternalServerErrorException('Transaction failed, changes rolled back.');
+        } finally {
+            await queryRunner.release();
+          }
     }
 
     async signin(authdto: AuthDto) {
